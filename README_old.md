@@ -1,3 +1,5 @@
+# **Note that this README was copied from [this project](https://github.com/ZhengyuLiang24/Conv4d-PyTorch)**
+
 # **Conv4d for PyTorch**
 
 
