@@ -4,31 +4,34 @@ from torch.nn.modules.utils import _quadruple
 import math
 import torch.nn.functional as F
 
-class Conv4d(nn.Module):
+class ConvTranspose4d(nn.Module):
     def __init__(self,
                  in_channels:int,
                  out_channels:int,
                  kernel_size:[int, tuple],
-                 stride:[int, tuple] = (1, 1, 1, 1),
-                 padding:[int, tuple] = (0, 0, 0, 0),
-                 dilation:[int, tuple] = (1, 1, 1, 1),
+                 stride:[int, tuple] = 1,
+                 padding:[int, tuple] = 0,
+                 output_padding:[int, tuple] = 0,
                  groups:int = 1,
                  bias=False,
-                 padding_mode:str ='zeros'):
-        super(Conv4d, self).__init__()
+                 #padding_mode:str ='zeros',
+                 dilation:[int, tuple] = 1):
+        super(ConvTranspose4d, self).__init__()
         kernel_size = _quadruple(kernel_size)
         stride = _quadruple(stride)
         padding = _quadruple(padding)
         dilation = _quadruple(dilation)
+        output_padding = _quadruple(output_padding) 
+
+        if not all(op < st or op < dl for op, st, dl in zip(output_padding, stride, dilation)):
+          raise ValueError('output padding must be smaller than either stride or dilation, got output padding={}, dilation={}, stride={}'.format(output_padding, dilation, stride))
+
+        input_padding = tuple(d*(ks-1)-p for d, p, ks in zip(dilation, padding, kernel_size))
 
         if in_channels % groups != 0:
             raise ValueError('in_channels must be divisible by groups')
         if out_channels % groups != 0:
             raise ValueError('out_channels must be divisible by groups')
-        valid_padding_modes = {'zeros'}
-        if padding_mode not in valid_padding_modes:
-            raise ValueError("padding_mode must be one of {}, but got padding_mode='{}'".format(
-                valid_padding_modes, padding_mode))
 
         # Assertions for constructor arguments
         assert len(kernel_size) == 4, '4D kernel size expected!'
@@ -43,10 +46,11 @@ class Conv4d(nn.Module):
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
+        self.input_padding = input_padding
+        self.output_padding = output_padding
         self.dilation = dilation
 
         self.groups = groups
-        self.padding_mode = padding_mode
 
         # `_reversed_padding_repeated_twice` is the padding to be passed to
         # `F.pad` if needed (e.g., for non-zero padding types that are
@@ -67,10 +71,11 @@ class Conv4d(nn.Module):
 
         for i in range(self.kernel_size[0]):
             # Initialize a Conv3D layer
-            conv3d_layer = nn.Conv3d(in_channels=self.in_channels,
+            conv3d_layer = nn.ConvTranspose3d(in_channels=self.in_channels,
                                      out_channels=self.out_channels,
                                      kernel_size=self.kernel_size[1::],
                                      padding=self.padding[1::],
+                                     output_padding=self.output_padding[1::],
                                      dilation=self.dilation[1::],
                                      stride=self.stride[1::])
             conv3d_layer.weight = nn.Parameter(self.weight[:, :, i, :, :])
@@ -94,14 +99,16 @@ class Conv4d(nn.Module):
         (Batch, _, l_i, d_i, h_i, w_i) = tuple(input.shape)
         (l_k, d_k, h_k, w_k) = self.kernel_size
         (l_p, d_p, h_p, w_p) = self.padding
+        (l_ip, d_ip, h_ip, w_ip) = self.input_padding
+        (l_op, d_op, h_op, w_op) = self.output_padding
         (l_d, d_d, h_d, w_d) = self.dilation
         (l_s, d_s, h_s, w_s) = self.stride
 
         # Compute the size of the output tensor based on the zero padding
-        l_o = (l_i + 2 * l_p - (l_k) - (l_k-1) * (l_d-1))//l_s + 1
-        d_o = (d_i + 2 * d_p - (d_k) - (d_k-1) * (d_d-1))//d_s + 1
-        h_o = (h_i + 2 * h_p - (h_k) - (h_k-1) * (h_d-1))//h_s + 1
-        w_o = (w_i + 2 * w_p - (w_k) - (w_k-1) * (w_d-1))//w_s + 1
+        l_o = (l_i - 1) * l_s - 2 * l_p + l_d * (l_k - 1) + l_op + 1
+        d_o = (d_i - 1) * d_s - 2 * d_p + d_d * (d_k - 1) + d_op + 1
+        h_o = (h_i - 1) * h_s - 2 * h_p + h_d * (h_k - 1) + h_op + 1
+        w_o = (w_i - 1) * w_s - 2 * w_p + w_d * (w_k - 1) + w_op + 1
 
         # Pre-define output tensors
         out = torch.zeros(Batch, self.out_channels, l_o, d_o, h_o, w_o).to(input.device)
@@ -109,14 +116,15 @@ class Conv4d(nn.Module):
         # Convolve each kernel frame i with each input frame j
         for i in range(l_k):
             # Calculate the zero-offset of kernel frame i
-            zero_offset = - l_p + (i * l_d)
+            zero_offset = - (l_p) + i
             # Calculate the range of input frame j corresponding to kernel frame i
-            j_start = max(zero_offset % l_s, zero_offset)
-            j_end = min(l_i, l_i + l_p - (l_k-i-1)*l_d)
             # Convolve each kernel frame i with corresponding input frame j
-            for j in range(j_start, j_end, l_s):
+            for j in range(0, l_i):
                 # Calculate the output frame
-                out_frame = (j - zero_offset) // l_s
+                out_frame = l_s * j + zero_offset
+                if out_frame < 0 or out_frame >= out.shape[2]:
+                  #print("{} -> {} (no)".format((i,l_s * j), out_frame))
+                  continue
                 # Add results to this output frame
                 out[:, :, out_frame, :, :, :] += self.conv3d_layers[i](input[:, :, j, :, :])
 
@@ -125,16 +133,3 @@ class Conv4d(nn.Module):
             out = out + self.bias.view(1, -1, 1, 1, 1, 1)
 
         return out
-
-
-
-if __name__ == "__main__":
-    input = torch.randn(2, 1, 5, 5, 5, 5).cuda()
-
-    net = Conv4d(1, 1, kernel_size=(3, 1,1, 1), padding=(0, 0, 0, 0), stride=(1, 1, 1, 1), dilation=(1, 1, 1, 1), bias=True ).cuda()
-    out1 = net(input)
-
-
-
-
-
