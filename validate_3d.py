@@ -134,4 +134,20 @@ class ConvTranspose3d(nn.Module):
 
         delta = torch.max(abs(out_official - out))
         return delta
-        
+
+
+# Running tests - note that this can use quite some memory due to how stride works in ConvTranspose
+for _ in range(100):
+    input = torch.randn(2, 16, 10, 10, 10)
+    kernel_size = (np.random.randint(1, 5), np.random.randint(1, 5), np.random.randint(1, 5))
+    padding = (np.random.randint(0, 10), np.random.randint(0, 10), np.random.randint(0, 10))
+    stride = (np.random.randint(1, 10), np.random.randint(1, 10), np.random.randint(1, 10))
+    padding = tuple(pd if pd < st else st - 1 for pd, st in zip(padding, stride))
+    dilation = 1
+    net = ConvTranspose3d(16, 16, kernel_size=kernel_size, padding=padding, stride=stride, dilation=dilation,
+                  groups=1, bias=True)
+    delta = net(input)
+    #print(delta) 
+    assert delta < 1e-5, 'error'
+
+print('100 random experiments of ConvTranspose3d have been completed, and the errors are all within a reasonable range!')
