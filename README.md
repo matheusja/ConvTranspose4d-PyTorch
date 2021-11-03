@@ -6,6 +6,6 @@ This code was inspired from [this project](https://github.com/ZhengyuLiang24/Con
 
 You can read their [README](https://github.com/matheusja/ConvTranspose4d-PyTorch/blob/main/README_old.md) for some context.
 
-I tried getting ```padding```, ```output_padding``` and ```stride``` to work like they work on pytorch analogues for lower dimensions, more espifically [1d](https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose1d.html), [2d](https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d.html) and [3d](https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose3d.html)
+I tried getting ```padding```, ```output_padding``` and ```stride``` to work like they work on pytorch analogues for lower dimensions, more espifically [ConvTranspose1d](https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose1d.html), [ConvTranspose2d](https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d.html) and [ConvTranspose3d](https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose3d.html)
 
 Some features were not implemented.
