@@ -59,7 +59,7 @@ class ConvTranspose4d(nn.Module):
         # # # # # self._reversed_padding_repeated_twice = _reverse_repeat_tuple(self.padding, 3)
 
         # Construct weight and bias of 4D convolution
-        self.weight = nn.Parameter(torch.Tensor(out_channels, in_channels // groups, *kernel_size))
+        self.weight = nn.Parameter(torch.Tensor(in_channels, out_channels // groups, *kernel_size))
         if bias:
             self.bias = nn.Parameter(torch.Tensor(out_channels))
         else:
@@ -77,6 +77,7 @@ class ConvTranspose4d(nn.Module):
                                      padding=self.padding[1::],
                                      output_padding=self.output_padding[1::],
                                      dilation=self.dilation[1::],
+                                     bias=False,
                                      stride=self.stride[1::])
             conv3d_layer.weight = nn.Parameter(self.weight[:, :, i, :, :])
 
